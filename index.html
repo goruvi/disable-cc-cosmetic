@@ -508,7 +508,7 @@ async function enableNotifications(){
     mem.set('dcc.notify', 'on');
     // visitors who have not downloaded yet: remember the current version so we can tell them about the next one
     if (latest && !mem.get(KEY)) mem.set('dcc.seen', { uuid: latest.ids[0], module: latest.ids[1], updated: latest.updated || null, kind: 'seen' });
-    await showNotification(CONFIG.PACK_NAME, 'Update alerts are on. You wilk receive update when there is an update.', 'dcc-welcome');
+    await showNotification(CONFIG.PACK_NAME, 'Update alerts are on. You will receive notification when there is an update.', 'dcc-welcome');
   }
   renderNotifyBtn();
   return perm === 'granted';
