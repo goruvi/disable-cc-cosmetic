@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Disable Cubecraft Cosmetic | Groovy</title>
-<meta name="description" content="Download the Disable Cubecraft Cosmetic pack for Minecraft Bedrock, made to improve game performance.">
+<meta name="description" content="A Minecraft Bedrock pack made to improve game performance by disabling CubeCraft cosmetics.">
 <meta name="author" content="Groovy">
 <link rel="icon" type="image/png" href="pack_icon.png">
 <link rel="apple-touch-icon" href="pack_icon.png">
@@ -311,10 +311,11 @@ async function fetchUuids(){
     res = await fetch(CONFIG.API_URL, { method: CONFIG.API_METHOD, headers: CONFIG.API_HEADERS, cache: 'no-store', signal: ctrl.signal });
   }catch(e){
     throw new UserError(e.name === 'AbortError'
-      ? 'The ID service took too long to answer. Please try again.'
-      : 'Could not reach the ID service. Check your connection and try again.');
+      ? 'API service took too long to answer. Please try again.'
+      : 'Could not reach the API service. Check your connection and try again.');
   }finally{ clearTimeout(timer); }
-  if (!res.ok) throw new UserError('The ID service returned an error (' + res.status + '). Please try again later.');
+  if (!res.ok) throw new UserError('The API service returned an error (' + res.status + '). Please try again later.');
+  if (!res.ok) throw new UserError('The API service returned an error (' + res.status + '). Please try again later.');
 
   const text = await res.text();
   let ids = null;
@@ -489,10 +490,10 @@ function renderNotifyBtn(){
   notifyBtn.hidden = false;
   const p = Notification.permission;
   if (p === 'denied'){
-    notifyBtn.textContent = '🔕 Notifications blocked'; notifyBtn.disabled = true;
+    notifyBtn.textContent = 'Notifications blocked'; notifyBtn.disabled = true;
     notifyBtn.title = 'Allow notifications for this site in your browser settings to get update alerts.';
   } else if (p === 'granted' && prefOn()){
-    notifyBtn.textContent = '🔔 Update alerts: on'; notifyBtn.disabled = false; notifyBtn.title = 'Click to turn off';
+    notifyBtn.textContent = '🔔 Update alerts: ON'; notifyBtn.disabled = false; notifyBtn.title = 'Click to turn off';
   } else {
     notifyBtn.textContent = '🔔 Notify me about updates'; notifyBtn.disabled = false; notifyBtn.title = '';
   }
@@ -507,7 +508,7 @@ async function enableNotifications(){
     mem.set('dcc.notify', 'on');
     // visitors who have not downloaded yet: remember the current version so we can tell them about the next one
     if (latest && !mem.get(KEY)) mem.set('dcc.seen', { uuid: latest.ids[0], module: latest.ids[1], updated: latest.updated || null, kind: 'seen' });
-    await showNotification(CONFIG.PACK_NAME, 'Update alerts are on. We will tell you when a new version is released.', 'dcc-welcome');
+    await showNotification(CONFIG.PACK_NAME, 'Update alerts are on. You wilk receive update when there is an update.', 'dcc-welcome');
   }
   renderNotifyBtn();
   return perm === 'granted';
@@ -535,7 +536,7 @@ function showBanner(saved, cur){
   $('#updText').textContent =
     (cur.updated ? 'A new version was released on ' + cur.updated + '.' : 'A new version of the pack is out.') +
     (saved.updated ? (saved.kind === 'seen' ? ' The one you last saw was from ' : ' You downloaded the one from ') + saved.updated + '.' : '') +
-    (idsChanged ? ' The pack IDs changed, so after importing it remove the old copy in Minecraft.' : '');
+    (idsChanged ? ' The pack IDs changed, so after importing it, remove the old pack in Minecraft.' : '');
   banner.classList.add('show');
 }
 async function checkForUpdate(pre, first){
