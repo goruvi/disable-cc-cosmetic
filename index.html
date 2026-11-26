@@ -151,6 +151,13 @@
   .update .txt{flex:1 1 220px;font-size:14.5px;}
   .update .txt small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;line-height:1.45;}
   .update .acts{display:flex;gap:8px;}
+  .notify-prompt{
+    margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;
+    padding:12px 16px;border-radius:12px;border:1px solid var(--line);background:rgba(17,28,51,.6);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);max-width:560px;font-size:14px;color:var(--muted);
+  }
+  .notify-prompt .acts{display:flex;gap:8px;}
+  .btn:disabled.btn-ghost{opacity:.6;cursor:not-allowed;}
 
   /* ---------- Snow ---------- */
   #snowBack,#snowFront{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;}
@@ -220,13 +227,21 @@
     <p class="status reveal">Made to improve your game's performance by turning off CubeCraft cosmetics.</p>
     <div class="cta reveal">
       <button id="download" class="btn btn-primary" type="button">Download .mcpack</button>
+      <button id="notifyBtn" class="btn btn-ghost" type="button" hidden>🔔 Notify me about updates</button>
     </div>
     <p class="msg reveal" id="msg" role="status" aria-live="polite"></p>
     <div class="ids" id="ids" hidden></div>
+    <div class="notify-prompt" id="notifyPrompt" hidden>
+      <span>🔔 Want a heads-up when this pack gets updated?</span>
+      <span class="acts">
+        <button type="button" class="btn btn-primary btn-sm" id="notifyYes">Turn on notifications</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="notifyNo">Not now</button>
+      </span>
+    </div>
     <div class="chips reveal">
       <span class="chip">Bedrock Edition</span>
       <span class="chip">.mcpack</span>
-      <span class="chip">16.48KB</span>
+      <span class="chip">16.84KB</span>
       <span class="chip" id="verChip"></span>
       <span class="chip" id="updChip">Updated <b id="updChipText">…</b></span>
     </div>
@@ -424,7 +439,7 @@ btn.addEventListener('click', async () => {
     const url = saveBlob(blob, CONFIG.FILE_NAME);
 
     // remember this version so we can tell the visitor when a newer one exists
-    mem.set(KEY, { uuid: packUuid, module: moduleUuid, updated: updated || null, at: Date.now() });
+    mem.set(KEY, { uuid: packUuid, module: moduleUuid, updated: updated || null, at: Date.now(), kind: 'downloaded' });
     latest = { ids, updated };
     updateAvailable = false; banner.classList.remove('show'); showUpdated(updated);
 
@@ -439,6 +454,7 @@ btn.addEventListener('click', async () => {
     idsBox.hidden = false;
     btn.textContent = 'Downloaded ✓';
     resetTimer = setTimeout(() => { btn.textContent = idleLabel(); }, 4000);
+    offerNotify();
   }catch(err){
     const text = err instanceof UserError ? err.message : 'Something went wrong while building the pack. Please try again.';
     if (!(err instanceof UserError)) console.error(err);
@@ -449,27 +465,100 @@ btn.addEventListener('click', async () => {
   }
 });
 
+/* ---------- browser notifications (opt-in) ---------- */
+const canNotify = 'Notification' in window;
+const hasSW = 'serviceWorker' in navigator && (location.protocol === 'https:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname));
+const notifyBtn = $('#notifyBtn'), notifyPrompt = $('#notifyPrompt');
+const prefOn = () => mem.get('dcc.notify') !== 'off';
+const notifyEnabled = () => canNotify && Notification.permission === 'granted' && prefOn();
+if (hasSW) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+async function showNotification(title, body, tag){
+  const opts = { body, icon: CONFIG.ICON_FILE, badge: CONFIG.ICON_FILE, tag: tag || 'dcc', renotify: true };
+  try{
+    if (hasSW){
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg){ await reg.showNotification(title, opts); return true; }
+    }
+    new Notification(title, opts);   // desktop fallback when there is no service worker
+    return true;
+  }catch(e){ return false; }
+}
+function renderNotifyBtn(){
+  if (!canNotify){ notifyBtn.hidden = true; return; }
+  notifyBtn.hidden = false;
+  const p = Notification.permission;
+  if (p === 'denied'){
+    notifyBtn.textContent = '🔕 Notifications blocked'; notifyBtn.disabled = true;
+    notifyBtn.title = 'Allow notifications for this site in your browser settings to get update alerts.';
+  } else if (p === 'granted' && prefOn()){
+    notifyBtn.textContent = '🔔 Update alerts: on'; notifyBtn.disabled = false; notifyBtn.title = 'Click to turn off';
+  } else {
+    notifyBtn.textContent = '🔔 Notify me about updates'; notifyBtn.disabled = false; notifyBtn.title = '';
+  }
+}
+async function enableNotifications(){
+  if (!canNotify) return false;
+  let perm = Notification.permission;
+  if (perm === 'default'){
+    try{ perm = await Notification.requestPermission(); }catch(e){ perm = Notification.permission; }
+  }
+  if (perm === 'granted'){
+    mem.set('dcc.notify', 'on');
+    // visitors who have not downloaded yet: remember the current version so we can tell them about the next one
+    if (latest && !mem.get(KEY)) mem.set('dcc.seen', { uuid: latest.ids[0], module: latest.ids[1], updated: latest.updated || null, kind: 'seen' });
+    await showNotification(CONFIG.PACK_NAME, 'Update alerts are on. We will tell you when a new version is released.', 'dcc-welcome');
+  }
+  renderNotifyBtn();
+  return perm === 'granted';
+}
+notifyBtn.addEventListener('click', async () => {
+  if (Notification.permission === 'granted' && prefOn()){
+    mem.set('dcc.notify', 'off'); renderNotifyBtn(); say('Update alerts turned off.');
+  } else {
+    await enableNotifications();
+  }
+});
+function offerNotify(){
+  if (!canNotify || Notification.permission !== 'default' || mem.get('dcc.notifyAsked')) return;
+  notifyPrompt.hidden = false;
+}
+$('#notifyYes').addEventListener('click', async () => {
+  mem.set('dcc.notifyAsked', true); notifyPrompt.hidden = true; await enableNotifications();
+});
+$('#notifyNo').addEventListener('click', () => { mem.set('dcc.notifyAsked', true); notifyPrompt.hidden = true; });
+renderNotifyBtn();
+
 /* ---------- update notification ---------- */
 function showBanner(saved, cur){
   const idsChanged = saved.uuid !== cur.ids[0] || saved.module !== cur.ids[1];
   $('#updText').textContent =
     (cur.updated ? 'A new version was released on ' + cur.updated + '.' : 'A new version of the pack is out.') +
-    (saved.updated ? ' You downloaded the one from ' + saved.updated + '.' : '') +
+    (saved.updated ? (saved.kind === 'seen' ? ' The one you last saw was from ' : ' You downloaded the one from ') + saved.updated + '.' : '') +
     (idsChanged ? ' The pack IDs changed, so after importing it remove the old copy in Minecraft.' : '');
   banner.classList.add('show');
 }
-async function checkForUpdate(pre){
+async function checkForUpdate(pre, first){
   if (!apiReady()) return;
   const [ids, updated] = await Promise.all([fetchUuids().catch(() => null), pre || fetchLastUpdate()]);
   if (!pre) showUpdated(updated);
   if (!ids) return;
   latest = { ids, updated };
-  const saved = mem.get(KEY);
+  const saved = mem.get(KEY) || mem.get('dcc.seen');
   updateAvailable = !!saved && (saved.uuid !== ids[0] || saved.module !== ids[1] ||
     (!!updated && !!saved.updated && saved.updated !== updated));
   if (!busy && btn.textContent !== 'Downloaded ✓') btn.textContent = idleLabel();
   if (updateAvailable && mem.get(KEY_DISMISS) !== sigOf(latest)) showBanner(saved, latest);
   else banner.classList.remove('show');
+  // system notification: only for a live update (page already open) or when the tab is in the background
+  if (updateAvailable && notifyEnabled() && (!first || document.hidden)){
+    const sig = sigOf(latest);
+    if (mem.get('dcc.notified') !== sig){
+      mem.set('dcc.notified', sig);
+      showNotification(CONFIG.PACK_NAME + ' updated',
+        (updated ? 'A new version was released on ' + updated + '. ' : 'A new version is available. ') + 'Open the page to download it.', 'dcc-update');
+    }
+  }
 }
 $('#updNow').addEventListener('click', () => btn.click());
 $('#updClose').addEventListener('click', () => {
@@ -478,7 +567,7 @@ $('#updClose').addEventListener('click', () => {
 });
 let lastCheck = Date.now();
 function maybeCheck(){ if (Date.now() - lastCheck < 30000) return; lastCheck = Date.now(); checkForUpdate(); }
-checkForUpdate(lastUpdateP);
+checkForUpdate(lastUpdateP, true);
 setInterval(maybeCheck, 5 * 60 * 1000);                      // while the page stays open
 document.addEventListener('visibilitychange', () => { if (!document.hidden) maybeCheck(); });
 $('#verChip').textContent = 'v' + CONFIG.VERSION.join('.');
